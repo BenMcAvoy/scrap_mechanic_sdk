@@ -26,7 +26,7 @@ manifest:
 
 ```json
 "dependencies": [
-    "BenMcAvoy-ScrapMechanicSDK-0.1.0"
+    "BenMcAvoy-ScrapMechanicSDK-0.1.1"
 ]
 ```
 

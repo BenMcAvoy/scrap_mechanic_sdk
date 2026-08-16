@@ -20,6 +20,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # memorylib is private; MEMORYLIB_PAT needs read access to both repos.
+          token: ${{ secrets.MEMORYLIB_PAT || github.token }}
 
       - name: Set up xmake
         uses: xmake-io/github-action-setup-xmake@v1

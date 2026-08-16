@@ -1,34 +1,96 @@
 # Scrap Mechanic SDK
 
-Shared reverse-engineering SDK for Scrap Mechanic DLL projects.
+The Scrap Mechanic SDK is a shared native library for DLL mods. It provides
+common hooks, Lua inspection helpers, game memory utilities, and event APIs so
+mods can share the same runtime instead of each carrying its own copy.
 
-The SDK is intentionally versioned around evidence from the current IDA database. Its public surface is typed ABI overlays, following the same property-based pattern as `scrapcheese`: a mod can use `reinterpret_cast<scrap::sdk::LuaManager *>(address)` and read named members such as `lua_vm_shared_ptr` or `callback_count`. The overlay keeps guarded copies at the process boundary because these objects disappear during world reloads.
+This project is intended for C++ mod developers who are building native DLLs
+for Scrap Mechanic and loading them with Rivet.
 
-Current scope:
+## Installation
 
-- guarded native capability resolution for the current executable;
-- guarded current-process memory reads;
-- game `std::string`-compatible decoding;
-- Lua script-type names and callback hash utilities;
-- `scrap::sdk::LuaManager` and `scrap::sdk::LuaVM` named property overlays;
-- layout-only game string and hash-map views used by those overlays;
-- reusable callback, hash-container, Lua string/map, script-entry, and manager/VM inspection state types;
-- manager lookup through the SDK resolver facade `scrap::sdk::lua_manager()`.
-- synchronous Lua interceptors and a shared asynchronous event bus;
-- `HookRegistry` for reverse-order detour ownership and unload cleanup.
+The SDK is distributed as a Thunderstore package named
+`BenMcAvoy-ScrapMechanicSDK`.
 
-The SDK is split into domain headers. `game.hpp` contains stable game access;
-`lua.hpp` contains native Lua hooks, diagnostics, and the native-loader bridge;
-`game_console.hpp`, `game_mode.hpp`, and `lua_identity.hpp` provide focused
-domain entry points. `sdk.hpp` remains the low-level ABI/memory overlay header;
-`lua_inspector.hpp` contains explicit inspection snapshots. The active SDK has
-no compatibility namespace layer; in-repository consumers use the domain API
-directly.
+Install the package in the Mods directory used by Rivet. The package contains:
 
-Game-facing overlays use the real MSVC types where the ABI is established:
-`std::string` and `std::shared_ptr`. Snapshot types are only for copying values
-into a debugger or exporter; they are not alternate representations of game
-objects. Opaque container layouts remain layout views until their exact key and
-value types are proven.
+```text
+manifest.json
+icon.png
+README.md
+scrap_mechanic_sdk.dll
+```
 
-Do not add a new offset catalog when extending a reversed class. Add a named property to the appropriate overlay, document the evidence and confidence, and leave genuinely unknown regions as padding or explicitly named unknown members. Keep file watching, reload policy, notifications, and mod-specific UI/behavior in the consuming DLL or application.
+A mod that uses the SDK should declare this dependency in its Thunderstore
+manifest:
+
+```json
+"dependencies": [
+    "BenMcAvoy-ScrapMechanicSDK-0.1.0"
+]
+```
+
+Rivet loads the SDK before mods that depend on it.
+
+## What it provides
+
+The public headers are grouped by purpose:
+
+- `api.hpp` is the main include for SDK consumers.
+- `lifecycle.hpp` controls SDK startup and shutdown.
+- `interceptors.hpp` provides synchronous native hook subscriptions.
+- `events.hpp` provides asynchronous events delivered on the SDK event thread.
+- `lua_interceptors.hpp` exposes synchronous Lua hook channels.
+- `lua_events.hpp` defines asynchronous Lua event payloads.
+- `game_console.hpp` provides access to the game's console.
+- `lua_hooks.hpp` exposes the Lua hook and reload interfaces.
+
+Synchronous interceptors run on the game thread that called the hook. They may
+inspect or change live game state, but handlers must be short and must not wait
+on other threads.
+
+Asynchronous events are copied into SDK-owned storage and delivered later on
+the SDK event thread. Their payloads use copied strings, numbers, flags, and
+stable identifiers. They do not provide pointers that remain valid after the
+native hook returns.
+
+## Building a mod
+
+Include the SDK headers and link against `scrap_mechanic_sdk.lib`. Place
+`scrap_mechanic_sdk.dll` beside the finished mod DLL when testing locally.
+
+The SDK uses a `memorylib` Git submodule. To build the SDK itself:
+
+```powershell
+git clone https://github.com/BenMcAvoy/scrap_mechanic_sdk.git
+cd scrap_mechanic_sdk
+git submodule update --init --recursive
+xmake f -y -p windows -a x64 -m release
+xmake b -r -y scrap_mechanic_sdk
+```
+
+The release DLL is written to:
+
+```text
+build/windows/x64/release/scrap_mechanic_sdk.dll
+```
+
+The GitHub Actions workflow builds the SDK and creates an upload-ready
+Thunderstore zip. It runs on Windows and includes the required submodule.
+
+## Compatibility
+
+The SDK targets the current Scrap Mechanic executable layout. Native layouts
+and function addresses can change when the game updates. The resolver checks
+the executable before enabling version-specific features and disables a
+feature when its required evidence is not available.
+
+Native overlay types describe game objects that are only valid while the game
+owns them. Do not retain pointers across world reloads or manager replacement.
+Use the provided snapshot types when data needs to outlive a hook callback.
+
+## Related projects
+
+- [Rivet](https://github.com/ReDoIngMods/Rivet) loads native mod packages.
+- [Lua hot reload](https://github.com/BenMcAvoy/lua_hot_reload) uses this SDK
+  to reload Lua files through the game's native reload path.

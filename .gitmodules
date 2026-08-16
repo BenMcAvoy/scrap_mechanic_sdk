@@ -1,0 +1,3 @@
+[submodule "memorylib"]
+	path = memorylib
+	url = https://github.com/BenMcAvoy/memorylib.git

@@ -172,22 +172,26 @@ namespace {
         void *path_object,
         std::int64_t cache_manager,
         std::int64_t extra) {
-        // Native loader thread, synchronous. Preserve the original path for every
-        // non-Lua request; only the changed Lua source is served from disk.
+        // Native loader thread, synchronous. Only the currently changed and
+        // resolvable Lua file is served from loose source. Every other request
+        // must reach the game's reader, including workshop $CONTENT paths that
+        // this mod cannot map to a physical file.
         auto original = g_raw_cache_read.original();
         const auto *path = reinterpret_cast<const std::string *>(path_object);
-        if (!is_lua_source(path))
-            return original ? original(output, path_object, cache_manager, extra) : 13;
-        if (read_source(reinterpret_cast<SourceBuffer *>(output), path)) {
-            return 0;
+        bool is_changed_source = false;
+        if (is_lua_source(path) && g_reload_active.load(std::memory_order_acquire)) {
+            const auto changed = last_changed_path();
+            std::wstring physical;
+            is_changed_source = !changed.empty() && resolve_source_path(path, physical) &&
+                                _wcsicmp(physical.c_str(), changed.c_str()) == 0;
+            if (is_changed_source && read_source(reinterpret_cast<SourceBuffer *>(output), path))
+                return 0;
         }
-        if (output) {
-            auto *buffer = reinterpret_cast<SourceBuffer *>(output);
-            buffer->data = nullptr;
-            buffer->size = 0;
-            buffer->owned = 1;
+
+        if (is_changed_source) {
+            diagnostic_log("lua reload loose read unavailable; preserving native cache path");
         }
-        return 13;
+        return original ? original(output, path_object, cache_manager, extra) : 13;
     }
 
     bool __fastcall hooked_cache_membership(void *cache, const std::string *path) {

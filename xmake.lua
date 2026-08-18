@@ -1,5 +1,5 @@
 set_project("scrap_mechanic_sdk")
-set_version("0.1.1")
+set_version("0.1.2")
 set_languages("c++20")
 set_toolchains("clang-cl")
 

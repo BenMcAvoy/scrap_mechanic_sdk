@@ -63,6 +63,10 @@ namespace {
     HookRegistry g_registry;
     std::atomic_bool g_reload_active{};
     std::atomic_bool g_native_change_pending{};
+    // The game reloads each Lua VM separately. Publish one completion event for
+    // the file-change batch, while still allowing every VM to run its native
+    // reload and class refresh.
+    std::atomic_bool g_reload_event_published{true};
     std::atomic_uint64_t g_reload_serial{};
 
     // Manager/VM pairing and deferred class refreshes are coordinated together.
@@ -432,8 +436,14 @@ namespace {
         }
         g_reload_active.store(false, std::memory_order_release);
         const auto physical_path = last_changed_path();
-        interceptors().source_reloaded.publish({vm, physical_path, success});
-        events().publish(SourceReloadedEvent{reinterpret_cast<std::uintptr_t>(vm), physical_path, success});
+        const bool publish_event = !physical_path.empty() &&
+                                   !g_reload_event_published.exchange(true, std::memory_order_acq_rel);
+        if (publish_event) {
+            interceptors().source_reloaded.publish({vm, physical_path, success});
+            events().publish(SourceReloadedEvent{reinterpret_cast<std::uintptr_t>(vm), physical_path, success});
+        } else {
+            diagnostic_log("native reload completion suppressed vm=%p path=%ls", vm, physical_path.c_str());
+        }
         diagnostic_log("native reload return vm=%p success=%s", vm, success ? "true" : "false");
     }
 
@@ -576,6 +586,7 @@ void notify_native_source_changed(std::wstring physical_path) noexcept {
         g_last_changed_path = std::move(physical_path);
     }
     clear_native_script_path();
+    g_reload_event_published.store(false, std::memory_order_release);
     g_native_change_pending.store(true, std::memory_order_release);
 }
 
@@ -589,6 +600,7 @@ void clear_native_source() noexcept {
         g_last_changed_path.clear();
     }
     g_native_change_pending.store(false, std::memory_order_release);
+    g_reload_event_published.store(true, std::memory_order_release);
 }
 
 bool install_hooks(HMODULE game_module, bool install_client_update) {

@@ -1,6 +1,6 @@
 {
     "name": "ScrapMechanicSDK",
-    "version_number": "0.1.2",
+    "version_number": "0.1.3",
     "website_url": "https://github.com/BenMcAvoy/scrap_mechanic_sdk",
     "description": "Shared native SDK for Scrap Mechanic DLL projects.",
     "dependencies": []
